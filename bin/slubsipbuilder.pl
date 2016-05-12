@@ -148,6 +148,8 @@ finddepth($wanted, $directory);
 p (%filecopyhash);
 # prepare dmd-sec
 my $mods = get_mods_from($url, $ppn);
+# remove the <xml /> from beginning of the answer
+$mods=~ s#<\?xml version="1.0" encoding="UTF-8"\?>#<!-- removed xml header from mods part -->#;
 my $dmd =<<DMD;
 <mets:dmdSec ID="DMDLOG_0000">
   <!-- bibliographic metadata -->
@@ -184,29 +186,56 @@ my $filesec=<<FILESEC1;
 <mets:fileSec>
   <mets:fileGrp USE="LZA">
 FILESEC1
-my @fsec;
-my $i=0;
-foreach my $fkey (keys (%filecopyhash)) {
-    push @fsec, sprintf("<mets:file ID=\"FILE_%015u_LZA\" CHECKSUMTYPE=\"MD5\" CHECKSUM=\"%s\">", $i, $filecopyhash{$fkey}->{"md5sum"});
-    push @fsec, sprintf("<mets:FLocat xmlns:xlink=\"http://www.w3.org/1999/xlink\" LOCTYPE=\"URL\" xlink:href=\"file://%s\"/>", $filecopyhash{$fkey}->{"relative"});
-    push @fsec, "</mets:file>";
-    $i++;
+{
+    my @fsec;
+    my $i=0;
+    foreach my $fkey (keys (%filecopyhash)) {
+        push @fsec, sprintf("<mets:file ID=\"FILE_%015u_LZA\" CHECKSUMTYPE=\"MD5\" CHECKSUM=\"%s\">", $i, $filecopyhash{$fkey}->{"md5sum"});
+        push @fsec, sprintf("<mets:FLocat xmlns:xlink=\"http://www.w3.org/1999/xlink\" LOCTYPE=\"URL\" xlink:href=\"file://%s\"/>", $filecopyhash{$fkey}->{"relative"});
+        push @fsec, "</mets:file>";
+        $i++;
+    }
+    $filesec = join("\n", $filesec, @fsec);
 }
-$filesec = join("\n", $filesec, @fsec);
 $filesec = $filesec . <<FILESEC2;
   </mets:fileGrp>
 </mets:fileSec>
 FILESEC2
+
+# prepare structmap
+my $structmap =<<STRUCTMAP1;
+<mets:structMap TYPE="PHYSICAL">
+  <mets:div ID="PHYS_0000" TYPE="ieDir">
+STRUCTMAP1
+{
+    my @ssec;
+    my $i=0;
+    foreach my $fkey (keys (%filecopyhash)) {
+        push @ssec, sprintf("<mets:div ID=\"PHYS_%015u_LZA\" TYPE=\"fileorderSequence\">", $i);
+        push @ssec, sprintf("<mets:fptr FILEID=\"FILE_%015u_LZA\" />", $i);
+        push @ssec, "</mets:div>";
+        $i++;
+    }
+    $structmap = join("\n", $structmap, @ssec);
+}
+$structmap = $structmap . <<STRUCTMAP2;
+  </mets:div>
+</mets:structMap>
+STRUCTMAP2
+
+
+
 
 # create sip.xml
 my $sip =<<METS;
 <?xml version="1.0" encoding="utf-8"?>
 <mets:mets xmlns:mets="http://www.loc.gov/METS/"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-3.xsd http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version17/mets.v1-7.xsd">
+    xsi:schemaLocation="http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version17/mets.v1-7.xsd">
     $dmd
     $amd
     $filesec
+    $structmap
 </mets:mets>
 METS
 
