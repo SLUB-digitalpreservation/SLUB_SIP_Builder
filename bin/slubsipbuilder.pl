@@ -9,7 +9,9 @@
 #
 # REQUIREMENTS: ---
 #         BUGS: ---
-#        NOTES: not production ready yet
+#        NOTES: not production ready yet, waiting for official document
+#               "SIP Spezifikation für automatischen Ingest SLUBArchiv
+#               2016-05-19"
 #       AUTHOR: Andreas Romeyke (romeyke@slub-dresden.de)
 # ORGANIZATION: SLUB
 #      VERSION: 0.1
@@ -132,7 +134,7 @@ my $wanted=sub {
         my $source = $file;
         $filecopyhash{$source}->{'source'}=$file;
         $file=~s#^$directory/?##;
-        $filecopyhash{$source}{'relative'}=$file;
+        $filecopyhash{$source}{'relative'}="content/$file";
         $filecopyhash{$source}{'target'}="$content/$file";
         my $fh;
         open($fh, "<", $source) || confess ("Can't open '$source', $!\n");
@@ -261,7 +263,7 @@ if (!defined $as_zip) {
     $mem->desiredCompressionMethod( COMPRESSION_DEFLATED );
     # copy source to target
     foreach my $source (keys (%filecopyhash)) {
-        my $target = $filecopyhash{$source}->{"target"};
+        my $target = $filecopyhash{$source}->{"relative"};
 
         my $basename = dirname($target);
         #say "cp $source, $target ($basename)";
