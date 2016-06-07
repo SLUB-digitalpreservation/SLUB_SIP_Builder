@@ -1,9 +1,9 @@
-#!/usr/bin/env perl 
+#!/usr/bin/env perl
 #===============================================================================
 #
 #         FILE: slubsipbuilder.pl
 #
-#        USAGE: ./slubsipbuilder.pl  
+#        USAGE: ./slubsipbuilder.pl
 #
 #  DESCRIPTION: A CLI tool to create a valid SIP for SLUBArchiv
 #
@@ -48,8 +48,8 @@ sub get_mods_from ($$) { # $mods = ($url, $ppn)
     # my $marc_dc_url = 'http://www.loc.gov/standards/marcxml/xslt/MARC21slim2RDFDC.xsl';
     my $marc_mods_url = 'http://www.loc.gov/standards/mods/v3/MARC21slim2MODS3-5.xsl';
 
-    my $ua = LWP::UserAgent->new; 
-    $ua->agent("MyApp/0.1 "); 
+    my $ua = LWP::UserAgent->new;
+    $ua->agent("MyApp/0.1 ");
     $ua->timeout(3600); #1h
     my $srubase=$url; # host
     my $srusearchkey="pica.ppn";
@@ -76,7 +76,6 @@ sub get_mods_from ($$) { # $mods = ($url, $ppn)
         carp ("Problem asking catalogue at $url using $ppn");
     }
 }
-
 
 #===============================================================================
 
@@ -111,17 +110,26 @@ if (!defined $directory) { confess ("you need to specify an IE directory, which 
 if (!defined $ppn) { confess ("you need to specify a PPN, which exists in SWB catalogue"); }
 if (!defined $output) { confess (" you need to specify an output path, where the SIP will be stored"); }
 if (!defined $url) { $url = "http://swb.bsz-bw.de/sru/DB=2.1/username=/password=/";}
-if (!defined $external_conservation_flag) { $external_conservation_flag="false"; } else { $external_conservation_flag="true"; } 
+if (!defined $external_conservation_flag) { $external_conservation_flag="false"; } else { $external_conservation_flag="true"; }
 # additional checks
 if (! -d $directory) { confess("you need to specify an IE directory, which needs to be archived, $!"); }
 #if (! -d $output) { confess("you need to specify an output path, where the SIP will be stored, $!"); }
 
 # get date
 my $export_to_archive_date = DateTime->now->iso8601();#
+my $file_date = $export_to_archive_date;
+$file_date =~ s/T/_/g;
+$file_date =~ s/:/-/g;
 # create output dir
 mkpath "$output" || confess("could not create SIP directory for '$output', $!");
-my $content = "$output/content";
-mkpath "$content" || confess("could not create SIP subdirectory for '$content', $!");
+my $sip_root_dir = "PPN-${ppn}_${file_date}";
+my $content = "$output/$sip_root_dir/content";
+if (!defined $as_zip) {
+    mkpath "$output/$sip_root_dir" || confess("could not create SIP directory for '$output/$sip_root_dir', $!");
+    mkpath "$content" || confess("could not create SIP subdirectory for '$content', $!");
+}
+
+
 # create filecopyhash
 my %filecopyhash;
 my $wanted=sub {
@@ -225,9 +233,6 @@ $structmap = $structmap . <<STRUCTMAP2;
 </mets:structMap>
 STRUCTMAP2
 
-
-
-
 # create sip.xml
 my $sip =<<METS;
 <?xml version="1.0" encoding="utf-8"?>
@@ -243,11 +248,10 @@ METS
 
 # compress if needed
 if (!defined $as_zip) {
-    write_file( "$output/sip.xml", $sip );
+    write_file( "${output}/${sip_root_dir}/sip.xml", $sip );
     # copy source to target
     foreach my $source (keys (%filecopyhash)) {
         my $target = $filecopyhash{$source}->{"target"};
-
         my $basename = dirname($target);
         #say "cp $source, $target ($basename)";
         if (! -d $basename) {
@@ -255,25 +259,25 @@ if (!defined $as_zip) {
         }
         cp $source, $target || confess ("could not copy from '$source' to '$target', $!");
     }
-    say "SIP build successfully in '$output'";
+    say "SIP '$sip_root_dir' build successfully in '$output'";
 } else {
     # compress it
+    my $zip_file_path = "$output/$sip_root_dir.zip";
     my $zip = Archive::Zip->new();
-    my $mem = $zip->addString($sip, "sip.xml" );
+    my $mem = $zip->addString($sip, "$sip_root_dir/sip.xml" );
     $mem->desiredCompressionMethod( COMPRESSION_DEFLATED );
     # copy source to target
     foreach my $source (keys (%filecopyhash)) {
-        my $target = $filecopyhash{$source}->{"relative"};
-
+        my $target = "$sip_root_dir/".$filecopyhash{$source}->{"relative"};
         my $basename = dirname($target);
         #say "cp $source, $target ($basename)";
         my $mem = $zip->addFile( $source, $target) || confess ("could not zip copy from '$source' to '$target', $!");
         $mem->desiredCompressionMethod( COMPRESSION_DEFLATED );
     }
-    unless ( $zip->writeToFileNamed("$output.zip") == AZ_OK ) {
-           confess "write error to $output.zip, $!";
+    unless ( $zip->writeToFileNamed($zip_file_path) == AZ_OK ) {
+           confess "write error to '$zip_file_path', $!";
     }
-    say "SIP build successfully in '$output.zip'";
+    say "SIP '$sip_root_dir' build successfully in '$zip_file_path'";
 }
 
 =pod
