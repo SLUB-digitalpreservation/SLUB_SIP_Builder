@@ -319,8 +319,7 @@ Print a brief help message and exits.
 
 =head1 DESCRIPTION
 
-B<This program> will read  a .gsa file and process all submission directories, check and create SIP directories and ingest them to our
-Rosetta (ExLibris) sytem, called SLUBArchive.
+B<This program> will process the given IE directory, add bibliographic metadata from catalogue with given PICA number and check and create a SIP directory ready for SLUBarchiv
 
 =cut
 # vim: set tabstop=4
