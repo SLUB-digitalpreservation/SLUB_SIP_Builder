@@ -178,7 +178,7 @@ my $amd =<<AMD;
         <mets:techMD ID="ARCHIVE">
             <mets:mdWrap MDTYPE="OTHER" MIMETYPE="text/xml" OTHERMDTYPE="ARCHIVE">
                 <mets:xmlData>
-                    <archive:record xmlns:archive="http://slub-dresden.de">
+                    <archive:record xmlns:archive="http://slub-dresden.de/slubarchiv">
                         <archive:exportToArchiveDate>$export_to_archive_date</archive:exportToArchiveDate>
                         <archive:externalId>$external_id</archive:externalId>
                         <archive:externalWorkflow>$external_workflow</archive:externalWorkflow>
