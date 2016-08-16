@@ -14,7 +14,7 @@
 #               2016-05-19"
 #       AUTHOR: Andreas Romeyke (romeyke@slub-dresden.de)
 # ORGANIZATION: SLUB
-#      VERSION: 0.1
+#      VERSION: 0.2
 #      CREATED: 10.05.2016
 #===============================================================================
 
@@ -238,7 +238,7 @@ my $sip =<<METS;
 <?xml version="1.0" encoding="utf-8"?>
 <mets:mets xmlns:mets="http://www.loc.gov/METS/"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version17/mets.v1-7.xsd">
+    xsi:schemaLocation="http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version111/mets.xsd">
     $dmd
     $amd
     $filesec
