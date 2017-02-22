@@ -81,6 +81,7 @@ sub get_mods_from ($$) { # $mods = ($url, $ppn)
 
 my $directory;
 my $ppn;
+my $noppn;
 my $output;
 my $url;
 my $as_zip;
@@ -94,6 +95,7 @@ our $VERSION = '1.0';
 GetOptions(
         "IE_directory=s"            => \$directory,
         "ppn=s"                     => \$ppn,
+        "noppn=s"                   => \$noppn,
         "SIP_output_path=s"         => \$output,
         "as_zip"                    => \$as_zip,
         "url=s"                     => \$url,
@@ -107,7 +109,8 @@ GetOptions(
     ) or pod2usage(2);
 
 if (!defined $directory) { confess ("you need to specify an IE directory, which needs to be archived"); }
-if (!defined $ppn) { confess ("you need to specify a PPN, which exists in SWB catalogue"); }
+if (!defined $ppn && !defined $noppn) { confess ("you need to specify a PPN, which exists in SWB catalogue"); }
+if (defined $ppn && defined $noppn) {confess ("you could only use --ppn=foo or --noppn=bar"); }
 if (!defined $output) { confess (" you need to specify an output path, where the SIP will be stored"); }
 if (!defined $url) { $url = "http://swb.bsz-bw.de/sru/DB=2.1/username=/password=/";}
 if (!defined $external_conservation_flag) { $external_conservation_flag="false"; } else { $external_conservation_flag="true"; }
@@ -123,7 +126,7 @@ $file_date =~ s/:/-/g;
 # create output dir
 mkpath "$output" || confess("could not create SIP directory for '$output', $!");
 my $sip_root_dir = "PPN-${ppn}_${file_date}";
-my $content = "$output/$sip_root_dir/content";
+my $content = "$output/$sip_root_dir/data";
 if (!defined $as_zip) {
     mkpath "$output/$sip_root_dir" || confess("could not create SIP directory for '$output/$sip_root_dir', $!");
     mkpath "$content" || confess("could not create SIP subdirectory for '$content', $!");
@@ -142,7 +145,7 @@ my $wanted=sub {
         my $source = $file;
         $filecopyhash{$source}->{'source'}=$file;
         $file=~s#^$directory/?##;
-        $filecopyhash{$source}{'relative'}="content/$file";
+        $filecopyhash{$source}{'relative'}="data/$file";
         $filecopyhash{$source}{'target'}="$content/$file";
         my $fh;
         open($fh, "<", $source) || confess ("Can't open '$source', $!\n");
@@ -157,9 +160,21 @@ my $wanted=sub {
 finddepth($wanted, $directory);
 p (%filecopyhash);
 # prepare dmd-sec
-my $mods = get_mods_from($url, $ppn);
+my $mods;
+if (defined $ppn) {
+$mods = get_mods_from($url, $ppn);
 # remove the <xml /> from beginning of the answer
 $mods=~ s#<\?xml version="1.0" encoding="UTF-8"\?>#<!-- removed xml header from mods part -->#;
+} elsif (defined $noppn) {
+    $mods =<<MODS;
+<mods version="3.3"
+    xmlns="http://www.loc.gov/mods/v3"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-3.xsd">
+    <identifier>$noppn</identifier>
+</mods>
+MODS
+}
 my $dmd =<<DMD;
 <mets:dmdSec ID="DMDLOG_0000">
   <!-- bibliographic metadata -->
@@ -294,9 +309,9 @@ slubsipbuilder.pl  [options]
         -help                           brief help message
         -man                            full documentation
 
-        -IE_directory=<IE dir>      	existing IE directory
+        -IE_directory=<IE dir>      	existing IE directory (absolute path!)
         -ppn=<ppn>	                    PPN (swb catalogue)
-        -SIP_output_path=<target dir>	where to put the SIP dir
+        -SIP_output_path=<target dir>	where to put the SIP dir (absolute path!)
         -as_zip                         optional, if set a ZIP will be created
         -url=<SRU url>			        optional, URL of the SRU for PICA catalogues
         -external_id=<id>			    mandatory, should be uniqe ID
