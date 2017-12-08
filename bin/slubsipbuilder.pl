@@ -24,7 +24,7 @@ use Carp;
 use 5.20.0;
 use strict;
 use warnings;
-use Archive::Zip qw( :ERROR_CODES :CONSTANTS );
+use Archive::Zip::SimpleZip qw($SimpleZipError);
 use Data::Printer; # for debugging
 use DateTime::Format::ISO8601;
 use Digest::MD5 qw(md5);
@@ -40,6 +40,40 @@ use Pod::Usage;
 use XML::LibXML;
 use XML::LibXSLT;
 use XML::XPath;
+
+my $with_debug = 0;
+
+# this will patch the mods-xml as a workaround for bugs in LOCs xslt files
+sub patch_mods($) {
+    my $modsobj = shift; # mods expected as XML Parser object
+    # TODO: Bugfix for /mets:mets/mets:dmdSec[1]/mets:mdWrap[1]/mets:xmlData[1]/mods:modsCollection[1]/mods:mods[1]/mods:relatedItem[2]/mods:internetMediaType[1]
+    my $xslt_patch_string =<<PATCH;
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:mods="http://www.loc.gov/mods/v3"
+    xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-5.xsd"
+    exclude-result-prefixes="xs"
+    version="1.0">
+    <xsl:output encoding="UTF-8" indent="yes" method="xml"/>
+    <xsl:strip-space elements="*"/>
+    <xsl:template match="//mods:mods/mods:relatedItem[mods:internetMediaType]">
+        <xsl:comment>patched wrong //mods:mods/mods:relatedItem[mods:internetMediaType]</xsl:comment>
+    </xsl:template>
+    <xsl:template match="@* | node()">
+        <xsl:copy>
+            <xsl:apply-templates select="@* | node()"/>
+        </xsl:copy>
+    </xsl:template>
+</xsl:stylesheet>
+PATCH
+    my $xslt = XML::LibXSLT->new();
+    my $xslt_patch = XML::LibXML->load_xml(string=>$xslt_patch_string, no_cdata=>1);
+    my $stylesheet = $xslt->parse_stylesheet ( $xslt_patch);
+    my $result = $stylesheet->transform( $modsobj );
+    return $result;
+}
 
 sub get_mods_from ($$) { # $mods = ($url, $ppn)
     my $url = shift;
@@ -71,7 +105,13 @@ sub get_mods_from ($$) { # $mods = ($url, $ppn)
         my $stylesheet = $xslt->parse_stylesheet ( $marcmods);
         my $marc = $parser->parse_string( $marcblob );
         my $result = $stylesheet->transform( $marc);
-        return $stylesheet->output_string( $result );
+        if ($with_debug) {
+            write_file("DEBUG_${ppn}_marc.xml", $marcblob);
+            write_file("DEBUG_${ppn}_unpatched_mods.xml", $stylesheet->output_string( $result ));
+        }
+        $result = patch_mods( $result);
+        my $result_string = $stylesheet->output_string( $result );
+        return $result_string;
     } else {
         carp ("Problem asking catalogue at $url using $ppn");
     }
@@ -104,6 +144,7 @@ GetOptions(
         "external_ISIL=s"           => \$external_isil,
         "external_value_descr=s"    => \$external_value_descr,
         "external_conservation_flag" => \$external_conservation_flag,
+        "debug"                     => \$with_debug,
 
         "help"                      => sub { pod2usage(1); exit(0); },
     ) or pod2usage(2);
@@ -162,15 +203,18 @@ p (%filecopyhash);
 # prepare dmd-sec
 my $mods;
 if (defined $ppn) {
-$mods = get_mods_from($url, $ppn);
+    $mods = get_mods_from($url, $ppn);
+    if (1 == $with_debug) {
+        write_file("DEBUG_${ppn}_mods.xml", $mods);
+    }
 # remove the <xml /> from beginning of the answer
-$mods=~ s#<\?xml version="1.0" encoding="UTF-8"\?>#<!-- removed xml header from mods part -->#;
+    $mods=~ s#<\?xml version="1.0" encoding="UTF-8"\?>#<!-- removed xml header from mods part -->#;
 } elsif (defined $noppn) {
     $mods =<<MODS;
-<mods version="3.3"
+<mods version="3.5"
     xmlns="http://www.loc.gov/mods/v3"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-3.xsd">
+    xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-5.xsd">
     <identifier>$noppn</identifier>
 </mods>
 MODS
@@ -278,19 +322,17 @@ if (!defined $as_zip) {
 } else {
     # compress it
     my $zip_file_path = "$output/$sip_root_dir.zip";
-    my $zip = Archive::Zip->new();
-    my $mem = $zip->addString($sip, "$sip_root_dir/sip.xml" );
-    $mem->desiredCompressionMethod( COMPRESSION_DEFLATED );
+    my $zip = new Archive::Zip::SimpleZip( $zip_file_path, Zip64=>1 );
+    $zip->addString($sip, Name=> "$sip_root_dir/sip.xml" );
     # copy source to target
     foreach my $source (keys (%filecopyhash)) {
         my $target = "$sip_root_dir/".$filecopyhash{$source}->{"relative"};
         my $basename = dirname($target);
         #say "cp $source, $target ($basename)";
-        my $mem = $zip->addFile( $source, $target) || confess ("could not zip copy from '$source' to '$target', $!");
-        $mem->desiredCompressionMethod( COMPRESSION_DEFLATED );
+        $zip->add( $source, Name=> $target) || confess ("could not zip copy from '$source' to '$target', $!");
     }
-    unless ( $zip->writeToFileNamed($zip_file_path) == AZ_OK ) {
-           confess "write error to '$zip_file_path', $!";
+    unless ( $zip->close()) {
+           confess "write error to '$zip_file_path', $SimpleZipError, $!";
     }
     say "SIP '$sip_root_dir' build successfully in '$zip_file_path'";
 }
